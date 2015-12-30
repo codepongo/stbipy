@@ -58,6 +58,7 @@ target/
 
 # Object Temperary File
 *.obj
+*.exp
 # Dynamic Link Library
 *.dll
 # Shared Object
