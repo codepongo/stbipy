@@ -1,3 +1,4 @@
+#pragma warning(disable:4005)
 #include <Python.h>
 #include <structmember.h>
 
@@ -11,6 +12,7 @@
 #include "stb/stb_image_resize.h"
 #define STB_IMAGE_WRITE_IMPLEMENTATION
 #include "stb/stb_image_write.h"
+
 
 /*****************************************************************************
  *
@@ -232,8 +234,7 @@ stbex_cube_hatch(stbex_cube *cube, int threshold)
 	}
 
 	cube->left = stbex_cube_new(cube->pixels, divide_point, cube);
-	cube->right = stbex_cube_new(cube->pixels + divide_point + 1,
-					       cube->npixels - divide_point - 1, cube);
+	cube->right = stbex_cube_new(cube->pixels + divide_point + 1, cube->npixels - divide_point - 1, cube);
 	cube->npixels = 0;
 
 	return 2;
@@ -258,7 +259,6 @@ stbex_cube_get_sample(stbex_cube *cube, stbex_pixel *samples, stbex_pixel *resul
 		if (length_r < 16 && length_g < 16 && length_b < 16) {
 			*(results + (*nresults)++) = stbex_pixel_new((cube->min_r + cube->max_r) / 2, (cube->min_g + cube->max_g) / 2, (cube->min_b + cube->max_b) / 2, 0); 
 /*
-			printf("(%d, %d, %d)\n", (cube->min_r + cube->max_r) / 2, (cube->min_g + cube->max_g) / 2, (cube->min_b + cube->max_b) / 2);
 */
 		} else {
 			*(results + (*nresults)++) = stbex_pixel_new(cube->min_r, cube->min_g, cube->min_b, 0); 
@@ -269,16 +269,6 @@ stbex_cube_get_sample(stbex_cube *cube, stbex_pixel *samples, stbex_pixel *resul
 			*(results + (*nresults)++) = stbex_pixel_new(cube->min_r, cube->max_g, cube->max_b, 0); 
 			*(results + (*nresults)++) = stbex_pixel_new(cube->max_r, cube->min_g, cube->max_b, 0); 
 			*(results + (*nresults)++) = stbex_pixel_new(cube->max_r, cube->max_g, cube->max_b, 0); 
-/*
-			printf("(%d, %d, %d) - (%d, %d, %d) => %ld\n",
-					        cube->min_r,
-					        cube->min_g,
-					        cube->min_b,
-					        cube->max_r,
-					        cube->max_g,
-					        cube->max_b,
-					        cube->npixels);
-*/
 		}
 	}
 }
@@ -413,7 +403,6 @@ Image_new(PyTypeObject *type, PyObject *args, PyObject *kwds)
 static void
 Image_dealloc(Image *self)
 {
-	printf("%p - %s\n", self, __FUNCTION__);
 	if (self->original) {
 		stbi_image_free(self->original);
 	}
@@ -481,12 +470,10 @@ Image_clone(PyObject *self, PyObject *args, PyObject *kwds)
 
 static PyObject *
 Image_write_png(PyObject* self, PyObject* args) {
-	printf("%p - %s\n", self, __FUNCTION__);
 	Image* img = (Image*)self;
 	const char* file;
 	int unused;
 	if (!PyArg_ParseTuple(args, "s|i", &file, &unused)) {
-		printf("%s(%s %d) - paramater error\n", __FUNCTION__, __FILE__, __LINE__);
 		return NULL;
 	}
 	int r = stbi_write_png(file, img->width, img->height, img->depth, img->original, 0);
@@ -494,10 +481,33 @@ Image_write_png(PyObject* self, PyObject* args) {
 	Py_RETURN_NONE;
 }
 
+
+static PyObject* Image_gray(PyObject* self, PyObject* args) {
+	PyTypeObject *type = (PyTypeObject *)PyObject_Type(self);
+	Image *src = (Image *)self;
+	Image *dest = (Image *)type->tp_alloc(type, 0);
+	if (dest == NULL) {
+		printf("%s(%s %d) - failure to alloc image\n", __FUNCTION__, __FILE__, __LINE__);
+		return NULL;
+	}
+	dest->width = src->width;
+	dest->height = src->height;
+	dest->depth = 1;
+	dest->original = malloc(dest->width * dest->height * dest->depth);
+	for (int gy = 0; gy < src->height; ++gy) {
+		for (int gx = 0; gx < src->width; ++gx) {
+			stbex_pixel *p;
+			p = pget(src->original, src->width * gy + gx, src->depth);
+			*(dest->original + dest->width * gy + gx) = (p->r * 30 + p->g * 59 + p->b * 11) / 100;
+		}
+	}
+	return (PyObject *)dest;
+
+
+}
 static PyObject *
 Image_crop(PyObject *self, PyObject *args)
 {
-	printf("%p - %s\n", self, __FUNCTION__);
 	PyTypeObject *type = (PyTypeObject *)PyObject_Type(self);
 
 	Image *src = (Image *)self;
@@ -509,7 +519,7 @@ Image_crop(PyObject *self, PyObject *args)
 	const size_t colors = 256;
 	stbex_pixel *p;
 
-	if (!PyArg_ParseTuple(args, "(iiii)", &left, &top, &right, &bottom)) {
+	if (!PyArg_ParseTuple(args, "iiii", &left, &top, &right, &bottom)) {
 		printf("%s(%s %d) - paramater error\n", __FUNCTION__, __FILE__, __LINE__);
 		return NULL;
 	}
@@ -572,9 +582,14 @@ static PyMethodDef Image_methods[] = {
 	{"clone", (PyCFunction)Image_clone, METH_KEYWORDS, "copy image data" },
 	{"thumbnail", Image_thumbnail, METH_VARARGS, "resize image data" },
 	{"crop", Image_crop, METH_VARARGS, "cut image" },
+	{"gray", Image_gray, METH_NOARGS, "gray image" },
 	{"save", Image_write_png, METH_VARARGS|METH_KEYWORDS, "save image to file as png format" },
 	{ NULL }  /* Sentinel */
 };
+
+static PyObject * Image_data(Image* self, void* closure) {
+	return PyByteArray_FromStringAndSize(self->original, self->width * self->height * self->depth);
+}
 
 static PyObject *
 Image_getsize(Image *self, void *closure)
@@ -586,6 +601,7 @@ Image_getsize(Image *self, void *closure)
 
 static PyGetSetDef Image_getseters[] = {
 	{ "size", (getter)Image_getsize, NULL, "size", NULL },
+	{ "data", (getter)Image_data, NULL, "data", NULL },
 	{ NULL }  /* Sentinel */
 }; 
 
@@ -663,10 +679,8 @@ open_image(PyObject *self, PyObject *args)
 	} else if (strcmp(tp_name, "cStringIO.StringI") == 0) {
 		chunk = PyObject_CallMethod(file, "getvalue", NULL);
 		if (chunk == NULL) {
-			printf("%d\n", __LINE__);
 			return NULL;
 		}
-		printf("%d\n", __LINE__);
 		PyString_AsStringAndSize(chunk, (char **)&buffer, &length);
 		data = stbi_load_from_memory(buffer, length, &x, &y, &n, STBI_default);
 		if (data == NULL) {
@@ -686,29 +700,18 @@ open_image(PyObject *self, PyObject *args)
 	pimage->width = x;
 	pimage->height = y;
 	pimage->depth = n;
-	printf("%p - %s\n", pimage, __FUNCTION__);
 	return (PyObject *)pimage;
 }
 
 static char Image_doc[] = "A simple python image library which likes PIL.\n";
 
 static PyMethodDef methods[] = {
-	{ "open", open_image, METH_VARARGS, "load image by filename\n" },
+	{ "open", open_image, METH_VARARGS, "load image by file\n" },
 	{ NULL, NULL, 0, NULL}
 };
 
-static PyObject *
-Image_antilias(Image *self)
-{
-	return PyTuple_Pack(1, 0);
-}
-
-
 /** module entry point */
-#ifdef WIN
-__declspec(dllexport)
-#endif //WIN32
-extern void initstbi(void)
+PyMODINIT_FUNC initstbi(void)
 {
 	PyObject *m = Py_InitModule3("stbi", methods, Image_doc);
 	if (PyType_Ready(&ImageType) < 0) {
