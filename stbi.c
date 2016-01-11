@@ -242,7 +242,7 @@ Image_resize(PyObject *self, PyObject *args)
 }
 
 static PyObject * Image_data(Image* self, void* closure) {
-	PyObject* o =  PyByteArray_FromStringAndSize(self->original, self->width * self->height * self->depth);
+	PyObject* o =  PyByteArray_FromStringAndSize((char*)self->original, self->width * self->height * self->depth);
 	return o;
 }
 
