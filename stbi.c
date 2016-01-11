@@ -151,7 +151,7 @@ static PyObject* Image_gray(PyObject* self, PyObject* args) {
 	Image *src = (Image *)self;
 	Image *dest = (Image *)type->tp_alloc(type, 0);
 	if (dest == NULL) {
-		printf("%s(%s %d) - failure to alloc image\n", __FUNCTION__, __FILE__, __LINE__);
+		{char buffer[1024] = {0};sprintf(buffer, "%s(%s %d) - failure to alloc image\n", __FUNCTION__, __FILE__, __LINE__);PyErr_SetString(PyExc_TypeError, buffer);}
 		return NULL;
 	}
 	dest->width = src->width;
@@ -184,7 +184,7 @@ Image_crop(PyObject *self, PyObject *args)
 	stbex_pixel *p;
 
 	if (!PyArg_ParseTuple(args, "iiii", &left, &top, &right, &bottom)) {
-		printf("%s(%s %d) - paramater error\n", __FUNCTION__, __FILE__, __LINE__);
+		{char buffer[1024] = {0};sprintf(buffer, "%s(%s %d) - paramater error\n", __FUNCTION__, __FILE__, __LINE__); PyErr_SetString(PyExc_TypeError, buffer);}
 		return NULL;
 	}
 	width = right - left;
@@ -193,7 +193,7 @@ Image_crop(PyObject *self, PyObject *args)
 	y = top;
 	dest = (Image *)type->tp_alloc(type, 0);
 	if (dest == NULL) {
-		printf("%s(%s %d) - failure to alloc image\n", __FUNCTION__, __FILE__, __LINE__);
+		{char buffer[1024] = {0};sprintf(buffer, "%s(%s %d) - failure to alloc image\n", __FUNCTION__, __FILE__, __LINE__); PyErr_SetString(PyExc_TypeError, buffer);}
 		return NULL;
 	}
 	dest->depth = src->depth;
@@ -223,12 +223,12 @@ Image_resize(PyObject *self, PyObject *args)
 	const size_t colors = 256;
 	stbex_pixel *p;
 	if (!PyArg_ParseTuple(args, "ii", &width, &height)) {
-		printf("%s(%s %d) - paramater error\n", __FUNCTION__, __FILE__, __LINE__);
+		{char buffer[1024] = {0};sprintf(buffer, "%s(%s %d) - paramater error\n", __FUNCTION__, __FILE__, __LINE__); PyErr_SetString(PyExc_TypeError, buffer);}
 		return NULL;
 	}
 	dest = (Image *)type->tp_alloc(type, 0);
 	if (dest == NULL) {
-		printf("%s(%s %d) - failure to alloc image\n", __FUNCTION__, __FILE__, __LINE__);
+		{char buffer[1024] = {0};sprintf(buffer, "%s(%s %d) - failure to alloc image\n", __FUNCTION__, __FILE__, __LINE__); PyErr_SetString(PyExc_TypeError, buffer);}
 		return NULL;
 	}
 	dest->depth = src->depth;
@@ -242,19 +242,30 @@ Image_resize(PyObject *self, PyObject *args)
 }
 
 static PyObject * Image_data(Image* self, void* closure) {
-	return PyByteArray_FromStringAndSize(self->original, self->width * self->height * self->depth);
+	PyObject* o =  PyByteArray_FromStringAndSize(self->original, self->width * self->height * self->depth);
+	return o;
 }
 
 static int Image_set_data(Image* self, PyObject* value, void* closure) {
-	if (value == NULL) {
-		return -1;
+	unsigned char* original; {
+		if (value == NULL) {
+			return -1;
+		}
+		if (!PyByteArray_Check(value)) {
+			return -1;
+		}
+		char* v; unsigned int n; {
+			v = PyByteArray_AsString(value);
+			n = PyByteArray_Size(value);
+		}
+		original = (unsigned char*)malloc(n * sizeof(unsigned char));
+		if (original == NULL) {
+			return -1;
+		}
+		memcpy(original, v, n);
 	}
-	if (!PyByteArray_Check(value)) {
-		return -1;
-	}
-	printf("%p\n", self->original);
 	free(self->original);
-	self->original = PyByteArray_AsString(value);
+	self->original = original;
 	return 0;
 }
 
