@@ -114,23 +114,29 @@ static PyObject *
 Image_save(PyObject* self, PyObject* args, PyObject* keywords) {
 	int r; {
 		Image* img = (Image*)self;
-		const char* file; const char* format; {
+		const char* file; const char* format = NULL; {
 			static char* kwds[] = {"file", "format", NULL};
 			if (!PyArg_ParseTupleAndKeywords(args, keywords, "s|s", kwds, &file, &format)) {
+				{char buffer[1024] = {0};sprintf(buffer, "%s(%s %d) - invaild arguments\n", __FUNCTION__, __FILE__, __LINE__);PyErr_SetString(PyExc_TypeError, buffer);}
 				return NULL;
 			}
 		}
-		if (strcmp(format, "bmp") == 0) {
-			r = stbi_write_bmp(file, img->width, img->height, img->depth, img->original);
-		}
-		else if (strcmp(format, "tga") == 0) {
-			r = stbi_write_tga(file, img->width, img->height, img->depth, img->original);
-		}
-		else if (strcmp(format, "hdr") == 0) {
-			r = stbi_write_hdr(file, img->width, img->height, img->depth, (float*)img->original);
-		}
-		else { //png or invalid format arguments
+		if (format == NULL) {
 			r = stbi_write_png(file, img->width, img->height, img->depth, img->original, 0);
+		}
+		else {
+			if (strcmp(format, "bmp") == 0) {
+				r = stbi_write_bmp(file, img->width, img->height, img->depth, img->original);
+			}
+			else if (strcmp(format, "tga") == 0) {
+				r = stbi_write_tga(file, img->width, img->height, img->depth, img->original);
+			}
+			else if (strcmp(format, "hdr") == 0) {
+				r = stbi_write_hdr(file, img->width, img->height, img->depth, (float*)img->original);
+			}
+			else { //png or invalid format arguments
+				r = stbi_write_png(file, img->width, img->height, img->depth, img->original, 0);
+			}
 		}
 	}
 	if (r == 0) {
@@ -239,6 +245,19 @@ static PyObject * Image_data(Image* self, void* closure) {
 	return PyByteArray_FromStringAndSize(self->original, self->width * self->height * self->depth);
 }
 
+static int Image_set_data(Image* self, PyObject* value, void* closure) {
+	if (value == NULL) {
+		return -1;
+	}
+	if (!PyByteArray_Check(value)) {
+		return -1;
+	}
+	printf("%p\n", self->original);
+	free(self->original);
+	self->original = PyByteArray_AsString(value);
+	return 0;
+}
+
 static PyObject *
 Image_getsize(Image *self, void *closure)
 {
@@ -256,13 +275,13 @@ static PyMethodDef Image_methods[] = {
 	{"resize", Image_resize, METH_VARARGS, "resize image data" },
 	{"crop", Image_crop, METH_VARARGS, "cut image" },
 	{"gray", Image_gray, METH_NOARGS, "gray image" },
-	{"save", Image_save, METH_VARARGS|METH_KEYWORDS, "save image to file as png format" },
+	{"save", (PyCFunction)Image_save, METH_VARARGS|METH_KEYWORDS, "save image to file as png format" },
 	{ NULL }  /* Sentinel */
 };
 
 static PyGetSetDef Image_getseters[] = {
 	{ "size", (getter)Image_getsize, NULL, "size", NULL },
-	{ "data", (getter)Image_data, NULL, "data", NULL },
+	{ "data", (getter)Image_data, (setter)Image_set_data, "data", NULL },
 	{ NULL }  /* Sentinel */
 }; 
 
