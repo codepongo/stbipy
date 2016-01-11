@@ -45,240 +45,6 @@ stbex_pixel_new(uint8_t r, uint8_t g, uint8_t b, uint8_t a)
 	return p;
 }
 
-int
-stbex_pixel_compare_r(const stbex_pixel *lhs, const stbex_pixel *rhs)
-{
-	return lhs->b > rhs->b ? 1: -1;
-}
-
-int
-stbex_pixel_compare_g(const stbex_pixel *lhs, const stbex_pixel *rhs)
-{
-	return lhs->g > rhs->g ? 1: -1;
-}
-
-int
-stbex_pixel_compare_b(const stbex_pixel *lhs, const stbex_pixel *rhs)
-{
-	return lhs->b > rhs->b ? 1: -1;
-}
-
-void
-stbex_pixel_sort_r(stbex_pixel * const pixels, size_t npixels)
-{
-	qsort(pixels, npixels, sizeof(stbex_pixel),
-		  (int (*)(const void *, const void *))stbex_pixel_compare_r);
-}
-
-void
-stbex_pixel_sort_g(stbex_pixel * const pixels, size_t npixels)
-{
-	qsort(pixels, npixels, sizeof(stbex_pixel),
-		  (int (*)(const void *, const void *))stbex_pixel_compare_g);
-}
-
-void
-stbex_pixel_sort_b(stbex_pixel * const pixels, size_t npixels)
-{
-	qsort(pixels, npixels, sizeof(stbex_pixel),
-		  (int (*)(const void *, const void *))stbex_pixel_compare_b);
-}
-
-
-/*****************************************************************************
- *
- * Median cut
- *
- *****************************************************************************/
-
-/** cube */
-struct stbex_cube;
-typedef struct _stbex_cube {
-	uint8_t min_r;
-	uint8_t min_g;
-	uint8_t min_b;
-	uint8_t max_r;
-	uint8_t max_g;
-	uint8_t max_b;
-	size_t npixels;
-	stbex_pixel *pixels;
-	struct stbex_cube *left;
-	struct stbex_cube *right;
-	struct stbex_cube *parent;
-} stbex_cube;
-
-void
-stbex_cube_fit(stbex_cube *cube)
-{
-	int i;
-	stbex_pixel *p;
-
-	cube->max_r = 0;
-	cube->min_r = 255;
-	cube->max_g = 0;
-	cube->min_g = 255;
-	cube->max_b = 0;
-	cube->min_b = 255;
-
-	for (i = 0; i < cube->npixels; i++) {
-		p = cube->pixels + i;
-		if (p->r < cube->min_r) {
-			cube->min_r = p->r;
-		}
-		if (p->g < cube->min_g) {
-			cube->min_g = p->g;
-		}
-		if (p->b < cube->min_b) {
-			cube->min_b = p->b;
-		}
-		if (p->r > cube->max_r) {
-			cube->max_r = p->r;
-		}
-		if (p->g > cube->max_g) {
-			cube->max_g = p->g;
-		}
-		if (p->b > cube->max_b) {
-			cube->max_b = p->b;
-		}
-	}
-}
-
-struct stbex_cube *
-stbex_cube_new(stbex_pixel *pixels, size_t npixels, stbex_cube *parent)
-{
-	stbex_cube *cube;
-   
-	cube = malloc(sizeof(stbex_cube));
-	cube->pixels = malloc(sizeof(stbex_pixel *) * npixels);
-	memcpy(cube->pixels, pixels, sizeof(stbex_pixel *) * npixels);
-	cube->npixels = npixels;
-	cube->left = NULL;
-	cube->right = NULL;
-	cube->parent = (struct stbex_cube*)parent;
-
-	stbex_cube_fit(cube);
-
-	return (struct stbex_cube *)cube;
-}
-
-void
-stbex_cube_free(stbex_cube *cube, stbex_pixel *pixels)
-{
-	free(cube->pixels);
-	free(cube);
-}
-
-int
-stbex_cube_hatch(stbex_cube *cube, int threshold)
-{
-	int length_r;
-	int length_g;
-	int length_b;
-	int divide_point;
-	int divide_value = 0;
-
-	if (cube->left != NULL && cube->right != NULL) {
-		return stbex_cube_hatch((stbex_cube *)cube->left, threshold)
-			 + stbex_cube_hatch((stbex_cube *)cube->right, threshold);
-	}
-
-	length_r = (int)cube->max_r - (int)cube->min_r;
-	length_g = (int)cube->max_g - (int)cube->min_g;
-	length_b = (int)cube->max_b - (int)cube->min_b;
-
-	if (cube->npixels <= 8) {
-		return cube->npixels;
-	}
-		   
-	if (cube->npixels < threshold) {
-		if (length_r < 16 && length_g < 16 && length_b < 16) {
-			return 1;
-		}
-		return 0;
-	}
-
-	divide_point = cube->npixels / 2;
-
-	if (length_r > length_g && length_r > length_b) {
-		stbex_pixel_sort_r(cube->pixels, cube->npixels);
-		divide_value = cube->pixels[divide_point - 1].r;
-		for (; divide_point < cube->npixels; divide_point++) {
-			if (cube->pixels[divide_point].r != divide_value) {
-				break;
-			}
-		}
-	} else if (length_g > length_b) {
-		stbex_pixel_sort_g(cube->pixels, cube->npixels);
-		divide_value = cube->pixels[divide_point - 1].g;
-		for (; divide_point < cube->npixels; divide_point++) {
-			if (cube->pixels[divide_point].g != divide_value) {
-				break;
-			}
-		}
-	} else {
-		stbex_pixel_sort_b(cube->pixels, cube->npixels);
-		divide_value = cube->pixels[divide_point - 1].b;
-		for (; divide_point < cube->npixels; divide_point++) {
-			if (cube->pixels[divide_point].b != divide_value) {
-				break;
-			}
-		}
-	}
-
-	if (divide_point == cube->npixels) {
-		return 1;
-	}
-
-	if (cube->npixels == divide_point + 1) {
-		return 1;
-	}
-
-	cube->left = stbex_cube_new(cube->pixels, divide_point, cube);
-	cube->right = stbex_cube_new(cube->pixels + divide_point + 1, cube->npixels - divide_point - 1, cube);
-	cube->npixels = 0;
-
-	return 2;
-}
-
-void
-stbex_cube_get_sample(stbex_cube *cube, stbex_pixel *samples, stbex_pixel *results, int *nresults)
-{
-	int length_r;
-	int length_g;
-	int length_b;
-
-	if (cube->left) {
-		stbex_cube_get_sample((stbex_cube *)cube->left, samples, results, nresults);
-		stbex_cube_get_sample((stbex_cube *)cube->right, samples, results, nresults);
-	} else {
-
-		length_r = (int)cube->max_r - (int)cube->min_r;
-		length_g = (int)cube->max_g - (int)cube->min_g;
-		length_b = (int)cube->max_b - (int)cube->min_b;
-
-		if (length_r < 16 && length_g < 16 && length_b < 16) {
-			*(results + (*nresults)++) = stbex_pixel_new((cube->min_r + cube->max_r) / 2, (cube->min_g + cube->max_g) / 2, (cube->min_b + cube->max_b) / 2, 0); 
-/*
-*/
-		} else {
-			*(results + (*nresults)++) = stbex_pixel_new(cube->min_r, cube->min_g, cube->min_b, 0); 
-			*(results + (*nresults)++) = stbex_pixel_new(cube->max_r, cube->min_g, cube->min_b, 0); 
-			*(results + (*nresults)++) = stbex_pixel_new(cube->min_r, cube->max_g, cube->min_b, 0); 
-			*(results + (*nresults)++) = stbex_pixel_new(cube->min_r, cube->min_g, cube->max_b, 0); 
-			*(results + (*nresults)++) = stbex_pixel_new(cube->max_r, cube->max_g, cube->min_b, 0); 
-			*(results + (*nresults)++) = stbex_pixel_new(cube->min_r, cube->max_g, cube->max_b, 0); 
-			*(results + (*nresults)++) = stbex_pixel_new(cube->max_r, cube->min_g, cube->max_b, 0); 
-			*(results + (*nresults)++) = stbex_pixel_new(cube->max_r, cube->max_g, cube->max_b, 0); 
-		}
-	}
-}
-
-/*****************************************************************************
- *
- * Coulor reduction
- *
- *****************************************************************************/
-
 void
 pset(uint8_t *data, int index, int depth, stbex_pixel *value)
 {
@@ -291,89 +57,12 @@ pget(unsigned char *data, int index, int depth)
 	return (stbex_pixel *)(data + index * depth);
 }
 
-stbex_pixel *
-zigzag_pget(unsigned char *data, int index, int width, int depth)
-{
-	int n = (int)floor(sqrt((index + 1) * 8) * 0.5 - 0.5);
-	int x, y;
-
-	if ((n & 0x1) == 0) {
-		y = index - n * (n + 1) / 2;
-		x = n - y;
-	} else {
-		x = index - n * (n + 1) / 2;
-		y = n - x;
-	}
-	return (stbex_pixel *)(data + (y * width + x) * depth);
-}
-
-stbex_pixel *
-get_sample(unsigned char *data, int width, int height, int depth, int *count)
-{
-	int i, j;
-	int n = width * height / *count;
-	int index;
-	stbex_pixel *result = malloc(sizeof(stbex_pixel) * *count);
-	stbex_pixel p;
-	char histgram[1 << 15];
-
-	memset(histgram, 0, sizeof(histgram));
-
-	for (i = 0; i < *count; i++) {
-		/* p = *zigzag_pget(data, i * n, width, depth); */
-		p = *pget(data, i * n, depth);
-		index = (p.r >> 3) << 10 | (p.g >> 3) << 5 | p.b >> 3;
-		histgram[index] = 1;
-	}
-
-	for (i = 0, j = 0; i < sizeof(histgram); i++) {
-		if (histgram[i] != 0) {
-			result[j].r = (i >> 10 & 0x1f) << 3;
-			result[j].g = (i >> 5 & 0x1f) << 3;
-			result[j].b = (i & 0x1f) << 3;
-			j++;
-		}
-	}
-	*count = j;
-	return result;
-}
-
-void add_offset(unsigned char *data, int i, int n, int roffset, int goffset, int boffset) {
-	int r = data[i * n + 0] + roffset;
-	int g = data[i * n + 1] + goffset;
-	int b = data[i * n + 2] + boffset;
-
-	if (r < 0) {
-		r = 0;
-	}
-	if (g < 0) {
-		g = 0;
-	}
-	if (b < 0) {
-		b = 0;
-	}
-	if (r > 255) {
-		r = 255;
-	}
-	if (g > 255) {
-		g = 255;
-	}
-	if (b > 255) {
-		b = 255;
-	}
-
-	data[i * n + 0] = (unsigned char)r;
-	data[i * n + 1] = (unsigned char)g;
-	data[i * n + 2] = (unsigned char)b;
-}
-
 /*****************************************************************************
  *
  * Image object
  *
  *****************************************************************************/
 
-static PyObject* error;
 /** Image object */
 typedef struct _Image {
 	PyObject_HEAD
@@ -383,22 +72,6 @@ typedef struct _Image {
 	int depth;
 } Image;
 
-/** allocator */
-static PyObject *
-Image_new(PyTypeObject *type, PyObject *args, PyObject *kwds)
-{
-	Image *self = (Image *)type->tp_alloc(type, 0);
-	if (self == NULL) {
-		return NULL;
-	}
-	self->original = NULL;
-	self->width = 0;
-	self->height = 0;
-	self->depth = 0;
-
-	return (PyObject *)self;
-}
- 
 /** deallocator */
 static void
 Image_dealloc(Image *self)
@@ -410,38 +83,8 @@ Image_dealloc(Image *self)
 	Py_TYPE(self)->tp_free((PyObject*)self);
 }
 
-/** initializer */
-/*
- static int
-Image_init(Image *self, PyObject *args, PyObject *kwds)
-{
-	PyObject *tmp;
-   
-	static char *kwlist[] = {
-		"width",
-		"height",
-		"depth",
-		NULL
-	};
-   
-	int result = PyArg_ParseTupleAndKeywords(args, kwds, "|iii", kwlist,
-					                         &self->width,
-					                         &self->height,
-					                         &self->depth);
-  
-	if (!result) {
-		return -1;
-	}
-   
-	return 0;
-}
-*/
 
-static PyMemberDef Image_members[] = {
-	{ NULL } 
-};
-
-
+/* copy */
 static PyObject *
 Image_clone(PyObject *self, PyObject *args, PyObject *kwds)
 {
@@ -467,20 +110,35 @@ Image_clone(PyObject *self, PyObject *args, PyObject *kwds)
 	return (PyObject *)dest;
 }
 
-
 static PyObject *
-Image_write_png(PyObject* self, PyObject* args) {
-	Image* img = (Image*)self;
-	const char* file;
-	int unused;
-	if (!PyArg_ParseTuple(args, "s|i", &file, &unused)) {
+Image_save(PyObject* self, PyObject* args, PyObject* keywords) {
+	int r; {
+		Image* img = (Image*)self;
+		const char* file; const char* format; {
+			static char* kwds[] = {"file", "format", NULL};
+			if (!PyArg_ParseTupleAndKeywords(args, keywords, "s|s", kwds, &file, &format)) {
+				return NULL;
+			}
+		}
+		if (strcmp(format, "bmp") == 0) {
+			r = stbi_write_bmp(file, img->width, img->height, img->depth, img->original);
+		}
+		else if (strcmp(format, "tga") == 0) {
+			r = stbi_write_tga(file, img->width, img->height, img->depth, img->original);
+		}
+		else if (strcmp(format, "hdr") == 0) {
+			r = stbi_write_hdr(file, img->width, img->height, img->depth, (float*)img->original);
+		}
+		else { //png or invalid format arguments
+			r = stbi_write_png(file, img->width, img->height, img->depth, img->original, 0);
+		}
+	}
+	if (r == 0) {
+		//error
 		return NULL;
 	}
-	int r = stbi_write_png(file, img->width, img->height, img->depth, img->original, 0);
-
 	Py_RETURN_NONE;
 }
-
 
 static PyObject* Image_gray(PyObject* self, PyObject* args) {
 	PyTypeObject *type = (PyTypeObject *)PyObject_Type(self);
@@ -547,7 +205,7 @@ Image_crop(PyObject *self, PyObject *args)
 }
 
 static PyObject *
-Image_thumbnail(PyObject *self, PyObject *args)
+Image_resize(PyObject *self, PyObject *args)
 {
 	PyTypeObject *type = (PyTypeObject *)PyObject_Type(self);
 
@@ -558,8 +216,7 @@ Image_thumbnail(PyObject *self, PyObject *args)
 	int rx, ry;
 	const size_t colors = 256;
 	stbex_pixel *p;
-	int unused = 0;
-	if (!PyArg_ParseTuple(args, "(ii)i", &width, &height, &unused)) {
+	if (!PyArg_ParseTuple(args, "ii", &width, &height)) {
 		printf("%s(%s %d) - paramater error\n", __FUNCTION__, __FILE__, __LINE__);
 		return NULL;
 	}
@@ -578,15 +235,6 @@ Image_thumbnail(PyObject *self, PyObject *args)
 	return (PyObject *)dest;
 }
 
-static PyMethodDef Image_methods[] = {
-	{"clone", (PyCFunction)Image_clone, METH_KEYWORDS, "copy image data" },
-	{"thumbnail", Image_thumbnail, METH_VARARGS, "resize image data" },
-	{"crop", Image_crop, METH_VARARGS, "cut image" },
-	{"gray", Image_gray, METH_NOARGS, "gray image" },
-	{"save", Image_write_png, METH_VARARGS|METH_KEYWORDS, "save image to file as png format" },
-	{ NULL }  /* Sentinel */
-};
-
 static PyObject * Image_data(Image* self, void* closure) {
 	return PyByteArray_FromStringAndSize(self->original, self->width * self->height * self->depth);
 }
@@ -598,6 +246,19 @@ Image_getsize(Image *self, void *closure)
 	PyObject *height = PyInt_FromLong(self->height);
 	return PyTuple_Pack(2, width, height);
 }
+
+static PyMemberDef Image_members[] = {
+	{ NULL } 
+};
+
+static PyMethodDef Image_methods[] = {
+	{"clone", (PyCFunction)Image_clone, METH_KEYWORDS, "copy image data" },
+	{"resize", Image_resize, METH_VARARGS, "resize image data" },
+	{"crop", Image_crop, METH_VARARGS, "cut image" },
+	{"gray", Image_gray, METH_NOARGS, "gray image" },
+	{"save", Image_save, METH_VARARGS|METH_KEYWORDS, "save image to file as png format" },
+	{ NULL }  /* Sentinel */
+};
 
 static PyGetSetDef Image_getseters[] = {
 	{ "size", (getter)Image_getsize, NULL, "size", NULL },
@@ -644,11 +305,9 @@ static PyTypeObject ImageType = {
 	0,				                        /* tp_dictoffset */
 	0,//(initproc)Image_init,				     /* tp_init */
 	0,				                        /* tp_alloc */
-	Image_new,				                /* tp_new */
+	0,				                /* tp_new */
 };
  
-/*
-*/
 static PyObject *
 open_image(PyObject *self, PyObject *args)
 {
@@ -672,8 +331,7 @@ open_image(PyObject *self, PyObject *args)
 		filename = PyString_AsString(file);
 		data = stbi_load(filename, &x, &y, &n, STBI_default);
 		if (data == NULL) {
-			char buffer[1024] = {0};
-			sprintf(buffer, "%s(%s %d) - stbi_load() is failure\n", __FUNCTION__, __FILE__, __LINE__);			PyErr_SetString(error, buffer);
+			{char buffer[1024] = {0};sprintf(buffer, "%s(%s %d) - stbi_load() is failure\n", __FUNCTION__, __FILE__, __LINE__);PyErr_SetString(PyExc_TypeError, buffer);}
 			return NULL;
 		}
 	} else if (strcmp(tp_name, "cStringIO.StringI") == 0) {
@@ -703,25 +361,21 @@ open_image(PyObject *self, PyObject *args)
 	return (PyObject *)pimage;
 }
 
-static char Image_doc[] = "A simple python image library which likes PIL.\n";
+static char stbi_doc[] = "A simple python image library which likes PIL.\n";
 
-static PyMethodDef methods[] = {
-	{ "open", open_image, METH_VARARGS, "load image by file\n" },
+static PyMethodDef stbi_methods[] = {
+	{ "open", open_image, METH_VARARGS, "load image from file or input stream(StringI)\n" },
 	{ NULL, NULL, 0, NULL}
 };
 
 /** module entry point */
 PyMODINIT_FUNC initstbi(void)
 {
-	PyObject *m = Py_InitModule3("stbi", methods, Image_doc);
+	PyObject *m = Py_InitModule3("stbi", stbi_methods, stbi_doc);
 	if (PyType_Ready(&ImageType) < 0) {
 		return;
 	}
 	PyModule_AddObject(m, "image", (PyObject *)&ImageType);
-	PyModule_AddObject(m, "ANTIALIAS", Py_BuildValue("i", 0));
-	error = PyErr_NewException("stbi.error", NULL, NULL);
-	Py_INCREF(error);
-	PyModule_AddObject(m, "error", error);
 }
 
 // EOF
